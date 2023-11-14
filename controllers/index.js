@@ -21,6 +21,7 @@ import {
 } from "../helpers/handleResponseHelper.js";
 
 import { v4 as uuidv4 } from "uuid";
+import { schema, schemaMyPokemon } from "../helpers/joiHelper.js";
 
 const data = readData();
 
@@ -75,21 +76,29 @@ export const catchPokemon = async (req, res) => {
       id: uuidv4(),
     };
 
-    const { status, length } = checkMyPokemonIsInListWithName(
-      data,
-      pokemonData.name
-    );
-    if (status) {
-      pokemonData.name = `${pokemonData.name}_number_${length}`;
-    }
-
     if (Math.random() < 0.5) {
+      const { status, length } = checkMyPokemonIsInListWithName(
+        data,
+        pokemonData.name
+      );
+      if (status) {
+        pokemonData.name = `${pokemonData.name}_number_${length}`;
+      }
+
       if (!data?.myPokemon) {
         data.myPokemon = [pokemonData];
       } else {
         data?.myPokemon.push(pokemonData);
       }
 
+      const { error } = schemaMyPokemon.validate(pokemonData);
+
+      if (error) {
+        return handleResponse(res, 400, {
+          status: "Validation Failed",
+          message: error.details[0].message,
+        });
+      }
       storeData(data);
 
       return handleResponse(res, 200, {
@@ -158,6 +167,17 @@ export const releasePokemon = async (req, res) => {
 export const renameMyPokemon = async (req, res) => {
   try {
     const { uuid } = req.params;
+    const newData = req.body;
+    const { name } = newData;
+    const { error } = schema.validate(newData);
+
+    if (error) {
+      return handleResponse(res, 400, {
+        status: "Validation Failed",
+        message: error.details[0].message,
+      });
+    }
+
     if (isdbEmpty()) {
       await setDbWithPokemonList();
     }
@@ -173,11 +193,12 @@ export const renameMyPokemon = async (req, res) => {
     data.myPokemon = data.myPokemon.filter((val) => val.id !== uuid);
     const newName =
       dataMyPokemon.renameCount === 0
-        ? `${dataMyPokemon.name}-${fibonacciNumber}`
-        : `${dataMyPokemon.name.replace(
-            `-${prevFibonacciNumber}`,
-            ""
-          )}-${fibonacciNumber}`;
+        ? `${name ? name : dataMyPokemon.name}-${fibonacciNumber}`
+        : `${
+            name
+              ? name
+              : dataMyPokemon.name.replace(`-${prevFibonacciNumber}`, "")
+          }-${fibonacciNumber}`;
 
     data.myPokemon.push({
       name: newName,
@@ -192,7 +213,6 @@ export const renameMyPokemon = async (req, res) => {
       message: `Success Rename from :  ${dataMyPokemon.name} , to : ${newName}`,
     });
   } catch (error) {
-    console.log(error);
     return handleServerError(res);
   }
 };
